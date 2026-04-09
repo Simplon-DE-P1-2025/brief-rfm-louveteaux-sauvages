@@ -122,19 +122,7 @@ except Exception as error:
     st.info("Verifie APP_DB_HOST/APP_DB_USER/APP_DB_PASSWORD/APP_DB_NAME.")
     st.stop()
 
-total_reviews = len(reviews_df)
-total_responses = len(responses_df)
-avg_rating = reviews_df["rating"].dropna().mean() if total_reviews else 0
-responded_reviews = responses_df["review_uid"].nunique() if total_responses else 0
-response_rate = (responded_reviews / total_reviews * 100) if total_reviews else 0
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total avis", f"{total_reviews}")
-c2.metric("Total reponses", f"{total_responses}")
-c3.metric("Note moyenne", f"{avg_rating:.2f}/5" if total_reviews else "0.00/5")
-c4.metric("Taux de reponse", f"{response_rate:.1f}%")
-
-if total_reviews == 0:
+if reviews_df.empty:
     st.warning("Aucune donnee disponible. Lance le DAG de scraping dans Airflow.")
     st.stop()
 
@@ -145,6 +133,19 @@ left_col, right_col = st.columns([1, 2], gap="large")
 
 with left_col:
     st.markdown("### Filtres")
+    st.markdown(
+        """
+<style>
+/* Colore les etiquettes selectionnees du multiselect "Note" */
+div[data-baseweb="tag"]:nth-of-type(1) { background-color: #b91c1c !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(2) { background-color: #ea580c !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(3) { background-color: #f59e0b !important; color: black !important; }
+div[data-baseweb="tag"]:nth-of-type(4) { background-color: #65a30d !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(5) { background-color: #16a34a !important; color: white !important; }
+</style>
+""",
+        unsafe_allow_html=True,
+    )
     rating_values = sorted(filtered["rating"].dropna().unique().tolist())
     rating_filter = st.multiselect("1) Note", options=rating_values, default=rating_values)
     search_text = st.text_input("2) Mot cle")
@@ -157,14 +158,14 @@ with left_col:
         c_start, c_end = st.columns(2)
         with c_start:
             start_date = st.date_input(
-                "3.1) Date debut",
+                "Date debut",
                 value=min_date.date(),
                 min_value=min_date.date(),
                 max_value=max_date.date(),
             )
         with c_end:
             end_date = st.date_input(
-                "3.2) Date fin",
+                "Date fin",
                 value=max_date.date(),
                 min_value=min_date.date(),
                 max_value=max_date.date(),
@@ -186,6 +187,21 @@ if start_date is not None and end_date is not None and start_date <= end_date:
             pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1),
         )
     ]
+
+filtered_responses = responses_df[responses_df["review_uid"].isin(filtered["review_uid"])]
+filtered_total_reviews = len(filtered)
+filtered_total_responses = len(filtered_responses)
+filtered_avg_rating = filtered["rating"].dropna().mean() if filtered_total_reviews else 0
+filtered_responded_reviews = filtered_responses["review_uid"].nunique() if filtered_total_responses else 0
+filtered_response_rate = (
+    filtered_responded_reviews / filtered_total_reviews * 100 if filtered_total_reviews else 0
+)
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total avis", f"{filtered_total_reviews}")
+c2.metric("Total reponses", f"{filtered_total_responses}")
+c3.metric("Note moyenne", f"{filtered_avg_rating:.2f}/5" if filtered_total_reviews else "0.00/5")
+c4.metric("Taux de reponse", f"{filtered_response_rate:.1f}%")
 
 with right_col:
     st.markdown("### Evolution hebdomadaire des notes")
@@ -248,9 +264,9 @@ st.dataframe(
 )
 
 st.markdown("### Reponses")
-if total_responses:
+if filtered_total_responses:
     st.dataframe(
-        responses_df[
+        filtered_responses[
             [
                 "review_uid",
                 "response_rank",

@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime
-from dags.utils.transform import run_transformation
+from utils.transform import run_transformation
 
 default_args = {
     "owner": "airflow",
@@ -12,7 +12,7 @@ with DAG(
     dag_id="transformation_rfm",
     default_args=default_args,
     start_date=datetime(2026, 1, 4),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
     tags=["rfm", "transformation"],
 ):

@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 from airflow import DAG
@@ -11,12 +12,39 @@ CONN_ID = "DATA-DB"
 RAW_TABLE = "raw.raw_orders"
 STAGING_TABLE = "stg.rfm_scores_staging"
 FINAL_TABLE = "clean.rfm_scores"
-EXCEL_PATH = os.getenv("DATA_PATH", "/opt/airflow/dags/data/online_retail_II.xlsx")
+EXCEL_PATH = os.getenv("DATA_PATH", "dags/data/raw/online_retail_II.xlsx")
 EXCEL_SHEET = os.getenv("EXCEL_SHEET", "Year 2010-2011")
 
 
 def _engine():
     return PostgresHook(postgres_conn_id=CONN_ID).get_sqlalchemy_engine()
+
+
+def _resolve_excel_path() -> str:
+    configured_path = Path(EXCEL_PATH)
+    candidates = []
+
+    if configured_path.is_absolute():
+        candidates.append(configured_path)
+    else:
+        dags_dir = Path(__file__).resolve().parent
+        project_root = dags_dir.parent
+        candidates.extend(
+            [
+                project_root / configured_path,  # ex: dags/data/raw/...
+                dags_dir / configured_path,      # ex: data/raw/...
+                Path("/opt/airflow") / configured_path,  # ex: container path
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    searched_paths = ", ".join(str(path) for path in candidates) or str(configured_path)
+    raise FileNotFoundError(
+        f"Excel file not found. DATA_PATH='{EXCEL_PATH}'. Paths checked: {searched_paths}"
+    )
 
 
 def _init_schemas() -> None:
@@ -30,7 +58,7 @@ def _init_schemas() -> None:
 
 def run_ingest() -> None:
     _init_schemas()
-    df = pd.read_excel(EXCEL_PATH, sheet_name=EXCEL_SHEET, dtype=str, engine="openpyxl")
+    df = pd.read_excel(_resolve_excel_path(), sheet_name=EXCEL_SHEET, dtype=str, engine="openpyxl")
     df = df.rename(
         columns={
             "Invoice": "invoice",

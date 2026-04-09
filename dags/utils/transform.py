@@ -1,6 +1,6 @@
 import pandas as pd
-from dags.utils.logger   import get_logger
-from dags.utils.db_utils import get_connection, fetch_dataframe
+from utils.logger   import get_logger
+from utils.db_utils import get_connection, fetch_dataframe
 
 log = get_logger("transform_rfm")
 

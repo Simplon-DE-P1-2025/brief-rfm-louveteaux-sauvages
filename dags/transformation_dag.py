@@ -1,7 +1,7 @@
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime
-from dags.utils.transform import run_transformation
+from utils.transform import run_transformation
 
 default_args = {
     "owner": "airflow",

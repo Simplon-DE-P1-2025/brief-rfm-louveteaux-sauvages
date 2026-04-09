@@ -3,18 +3,19 @@ import sys
 from dotenv import load_dotenv
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, ROOT)
+DAGS = os.path.join(ROOT, "dags")
+sys.path.insert(0, DAGS)
 load_dotenv(os.path.join(ROOT, ".env"))
 
-from dags.utils.db_utils import create_database, create_schemas
-from dags.utils.load import run_loading
+from utils.db_utils import create_database, create_schemas
+from utils.load import run_loading
 
 if __name__ == "__main__":
 
     # ── Pré-requis ────────────────────────────────────────
     print("\n═══ CONNEXION ═══")
     create_database()
-    from dags.utils.db_utils import get_connection
+    from utils.db_utils import get_connection
     conn = get_connection()
     create_schemas(conn)
     conn.close()

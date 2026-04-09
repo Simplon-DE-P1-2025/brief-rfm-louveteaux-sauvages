@@ -3,7 +3,7 @@ import pandas as pd
 import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
-from dags.utils.logger import get_logger
+from .logger import get_logger
 
 load_dotenv()
 

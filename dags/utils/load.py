@@ -1,6 +1,6 @@
-from dags.utils.logger    import get_logger
-from dags.utils.db_utils  import get_connection, get_engine, execute_query
-from dags.utils.transform import run_transformation
+from .logger import get_logger
+from .db_utils import get_connection, get_engine, execute_query
+from .transform import run_transformation
 
 log = get_logger("load")
 

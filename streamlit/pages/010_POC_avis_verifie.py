@@ -135,14 +135,14 @@ with left_col:
     st.markdown("### Filtres")
     st.markdown(
         """
-<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
-  <span style="font-size:0.9rem;">Nuancier notes:</span>
-  <span style="background:#b91c1c; color:white; padding:2px 8px; border-radius:999px;">1</span>
-  <span style="background:#ea580c; color:white; padding:2px 8px; border-radius:999px;">2</span>
-  <span style="background:#f59e0b; color:black; padding:2px 8px; border-radius:999px;">3</span>
-  <span style="background:#65a30d; color:white; padding:2px 8px; border-radius:999px;">4</span>
-  <span style="background:#16a34a; color:white; padding:2px 8px; border-radius:999px;">5</span>
-</div>
+<style>
+/* Colore les etiquettes selectionnees du multiselect "Note" */
+div[data-baseweb="tag"]:nth-of-type(1) { background-color: #b91c1c !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(2) { background-color: #ea580c !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(3) { background-color: #f59e0b !important; color: black !important; }
+div[data-baseweb="tag"]:nth-of-type(4) { background-color: #65a30d !important; color: white !important; }
+div[data-baseweb="tag"]:nth-of-type(5) { background-color: #16a34a !important; color: white !important; }
+</style>
 """,
         unsafe_allow_html=True,
     )

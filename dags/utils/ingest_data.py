@@ -14,47 +14,61 @@ log = get_logger("ingestion")
 # ─────────────────────────────────────────────────────────
 
 DATA_PATH  = os.getenv("DATA_PATH",  "/opt/airflow/data/online_retail_II.xlsx")
-SHEET_NAME = os.getenv("EXCEL_SHEET", "Year 2010-2011")
+SHEET_NAME = os.getenv("EXCEL_SHEET", None)   # None = toutes les feuilles
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", 5000))
 
 # ─────────────────────────────────────────────────────────
 # 1. LECTURE DU FICHIER EXCEL
 # ─────────────────────────────────────────────────────────
 
+SHEETS_ALL = ["Year 2009-2010", "Year 2010-2011"]
+
 def load_excel(
     path: str = DATA_PATH,
-    sheet_name: str = SHEET_NAME,
+    sheet_name=SHEET_NAME,
 ) -> pd.DataFrame:
     """
     Lit le fichier Excel Online Retail II.
+    Si sheet_name est None, lit ET concatène toutes les feuilles (SHEETS_ALL).
 
     Args:
         path       : chemin vers le fichier .xlsx  (défaut : DATA_PATH du .env)
-        sheet_name : nom de la feuille à lire      (défaut : EXCEL_SHEET du .env)
+        sheet_name : nom de la feuille à lire, ou None pour toutes
 
     Returns:
         pd.DataFrame brut (toutes colonnes en str)
     """
     log.info(f"Lecture du fichier : {path}")
-    log.debug(f"Feuille : {sheet_name}")
 
     if not os.path.exists(path):
         log.error(f"Fichier introuvable : {path}")
         raise FileNotFoundError(f"Fichier introuvable : {path}")
 
     try:
-        df = pd.read_excel(
-            path,
-            sheet_name=sheet_name,
-            dtype=str,
-            engine="openpyxl",
-        )
-        log.info(f"Fichier chargé : {len(df)} lignes, {len(df.columns)} colonnes")
+        if sheet_name is None:
+            sheets = SHEETS_ALL
+        else:
+            sheets = [sheet_name]
+
+        dfs = []
+        for sheet in sheets:
+            log.debug(f"Lecture feuille : {sheet}")
+            df_sheet = pd.read_excel(
+                path,
+                sheet_name=sheet,
+                dtype=str,
+                engine="openpyxl",
+            )
+            log.info(f"Feuille '{sheet}' : {len(df_sheet)} lignes")
+            dfs.append(df_sheet)
+
+        df = pd.concat(dfs, ignore_index=True)
+        log.info(f"Fichier chargé : {len(df)} lignes, {len(df.columns)} colonnes ({len(sheets)} feuille(s))")
         log.debug(f"Colonnes détectées : {df.columns.tolist()}")
         return df
 
-    except ValueError:
-        log.error(f"Feuille '{sheet_name}' introuvable dans le fichier")
+    except ValueError as e:
+        log.error(f"Erreur lecture feuille : {e}")
         raise
 
 

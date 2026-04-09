@@ -17,8 +17,10 @@ DIM_CLIENT_TABLE = "public.dim_client"
 DIM_PRODUIT_TABLE = "public.dim_produit"
 DIM_FACTURE_TABLE = "public.dim_facture"
 FACT_ORDERS_TABLE = "public.fact_orders"
+SEGMENTATION_VIEW = "public.v_rfm_segmentation"
 EXCEL_PATH = os.getenv("DATA_PATH", "dags/data/raw/online_retail_II.xlsx")
-EXCEL_SHEET = os.getenv("EXCEL_SHEET", "Year 2010-2011")
+# Vide = tous les onglets. Sinon liste séparée par virgules, ex. "Year 2009-2010,Year 2010-2011"
+EXCEL_SHEETS = os.getenv("EXCEL_SHEETS", "").strip()
 
 
 def _engine():
@@ -52,8 +54,17 @@ def _resolve_excel_path() -> str:
     )
 
 
-def run_ingest() -> None:
-    df = pd.read_excel(_resolve_excel_path(), sheet_name=EXCEL_SHEET, dtype=str, engine="openpyxl")
+def _excel_sheet_param():
+    """None = tous les onglets ; sinon un nom ou une liste de noms."""
+    if not EXCEL_SHEETS:
+        return None
+    parts = [s.strip() for s in EXCEL_SHEETS.split(",") if s.strip()]
+    if not parts:
+        return None
+    return parts[0] if len(parts) == 1 else parts
+
+
+def _normalize_retail_frame(df: pd.DataFrame) -> pd.DataFrame:
     df = df.rename(
         columns={
             "Invoice": "invoice",
@@ -66,8 +77,29 @@ def run_ingest() -> None:
             "Country": "country",
         }
     )
-    expected = ["invoice", "stock_code", "description", "quantity", "invoice_date", "price", "customer_id", "country"]
-    df = df[expected]
+    expected = [
+        "invoice",
+        "stock_code",
+        "description",
+        "quantity",
+        "invoice_date",
+        "price",
+        "customer_id",
+        "country",
+    ]
+    return df[expected]
+
+
+def run_ingest() -> None:
+    path = _resolve_excel_path()
+    raw = pd.read_excel(path, sheet_name=_excel_sheet_param(), dtype=str, engine="openpyxl")
+    if isinstance(raw, dict):
+        df = pd.concat(
+            [_normalize_retail_frame(sheet_df) for sheet_df in raw.values()],
+            ignore_index=True,
+        )
+    else:
+        df = _normalize_retail_frame(raw)
     df.to_sql("raw_orders", con=_engine(), schema="public", if_exists="replace", index=False, method="multi", chunksize=5000)
 
 
@@ -79,7 +111,7 @@ def run_clean() -> None:
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
     df["invoice_date"] = pd.to_datetime(df["invoice_date"], errors="coerce")
     df = df.dropna(subset=["customer_id", "quantity", "price", "invoice_date"])
-    df = df[~df["invoice"].astype(str).str.startswith("C")]
+    df = df[~df["invoice"].str.startswith("C")]
     df = df[(df["quantity"] > 0) & (df["price"] > 0)]
     df = df.drop_duplicates()
     df["total_price"] = df["quantity"] * df["price"]
@@ -88,6 +120,8 @@ def run_clean() -> None:
 
 def run_transform() -> None:
     df = pd.read_sql(f"SELECT * FROM {CLEAN_TABLE}", con=_engine())
+    df = df.copy()
+    df["total_price"] = df["quantity"] * df["price"]
 
     snapshot = df["invoice_date"].max() + pd.Timedelta(days=1)
     rfm = df.groupby("customer_id").agg(
@@ -98,8 +132,8 @@ def run_transform() -> None:
     rfm["r_score"] = pd.qcut(rfm["recency"], q=5, labels=[5, 4, 3, 2, 1]).astype(int)
     rfm["f_score"] = pd.qcut(rfm["frequency"].rank(method="first"), q=5, labels=[1, 2, 3, 4, 5]).astype(int)
     rfm["m_score"] = pd.qcut(rfm["monetary"], q=5, labels=[1, 2, 3, 4, 5]).astype(int)
-    rfm["rfm_total"] = rfm["r_score"] + rfm["f_score"] + rfm["m_score"]
     rfm["rfm_score"] = rfm["r_score"].astype(str) + rfm["f_score"].astype(str) + rfm["m_score"].astype(str)
+    rfm["rfm_total"] = rfm["r_score"] + rfm["f_score"] + rfm["m_score"]
 
     def _segment(row: pd.Series) -> str:
         r = int(row["r_score"])
@@ -143,7 +177,7 @@ def run_star_schema() -> None:
     dim_produit.to_sql("dim_produit", con=_engine(), schema="public", if_exists="replace", index=False, method="multi", chunksize=5000)
 
     dim_facture = df[["invoice", "customer_id", "invoice_date"]].drop_duplicates(subset=["invoice"]).reset_index(drop=True)
-    dim_facture["is_retour"] = dim_facture["invoice"].astype(str).str.startswith("C")
+    dim_facture["is_retour"] = dim_facture["invoice"].str.startswith("C")
     dim_facture.to_sql("dim_facture", con=_engine(), schema="public", if_exists="replace", index=False, method="multi", chunksize=5000)
 
     rfm_cols = ["customer_id", "r_score", "f_score", "m_score", "rfm_score", "rfm_total", "segment", "categorisation"]
@@ -160,6 +194,31 @@ def run_load() -> None:
         with conn.cursor() as cur:
             cur.execute(f"DROP TABLE IF EXISTS {FINAL_TABLE};")
             cur.execute(f"CREATE TABLE {FINAL_TABLE} AS SELECT * FROM {STAGING_TABLE};")
+            cur.execute(f"DROP VIEW IF EXISTS {SEGMENTATION_VIEW};")
+            cur.execute(
+                f"""
+                CREATE VIEW {SEGMENTATION_VIEW} AS
+                SELECT
+                    customer_id,
+                    recency,
+                    frequency,
+                    monetary,
+                    r_score,
+                    f_score,
+                    m_score,
+                    rfm_score,
+                    rfm_total,
+                    CASE
+                        WHEN rfm_score = '555' THEN 'Champion'
+                        WHEN r_score >= 4 AND f_score >= 4 THEN 'Client fidele'
+                        WHEN r_score >= 4 AND f_score <= 2 THEN 'Nouveau client'
+                        WHEN r_score <= 2 AND f_score >= 3 THEN 'Client a risque'
+                        WHEN r_score <= 2 AND f_score <= 2 THEN 'Client perdu'
+                        ELSE 'Client moyen'
+                    END AS segment
+                FROM {FINAL_TABLE};
+                """
+            )
 
 
 default_args = {"owner": "airflow", "retries": 1}

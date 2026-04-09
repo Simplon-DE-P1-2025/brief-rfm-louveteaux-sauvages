@@ -9,9 +9,9 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 
 
 CONN_ID = "DATA-DB"
-RAW_TABLE = "raw.raw_orders"
-STAGING_TABLE = "stg.rfm_scores_staging"
-FINAL_TABLE = "clean.rfm_scores"
+RAW_TABLE = "public.raw_orders"
+STAGING_TABLE = "public.rfm_scores_staging"
+FINAL_TABLE = "public.rfm_scores"
 EXCEL_PATH = os.getenv("DATA_PATH", "dags/data/raw/online_retail_II.xlsx")
 EXCEL_SHEET = os.getenv("EXCEL_SHEET", "Year 2010-2011")
 
@@ -47,17 +47,7 @@ def _resolve_excel_path() -> str:
     )
 
 
-def _init_schemas() -> None:
-    hook = PostgresHook(postgres_conn_id=CONN_ID)
-    with hook.get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("CREATE SCHEMA IF NOT EXISTS raw;")
-            cur.execute("CREATE SCHEMA IF NOT EXISTS stg;")
-            cur.execute("CREATE SCHEMA IF NOT EXISTS clean;")
-
-
 def run_ingest() -> None:
-    _init_schemas()
     df = pd.read_excel(_resolve_excel_path(), sheet_name=EXCEL_SHEET, dtype=str, engine="openpyxl")
     df = df.rename(
         columns={
@@ -73,7 +63,7 @@ def run_ingest() -> None:
     )
     expected = ["invoice", "stock_code", "description", "quantity", "invoice_date", "price", "customer_id", "country"]
     df = df[expected]
-    df.to_sql("raw_orders", con=_engine(), schema="raw", if_exists="replace", index=False, method="multi", chunksize=5000)
+    df.to_sql("raw_orders", con=_engine(), schema="public", if_exists="replace", index=False, method="multi", chunksize=5000)
 
 
 def run_transform() -> None:
@@ -97,7 +87,7 @@ def run_transform() -> None:
     rfm["m_score"] = pd.qcut(rfm["monetary"], q=5, labels=[1, 2, 3, 4, 5]).astype(int)
     rfm["rfm_total"] = rfm["r_score"] + rfm["f_score"] + rfm["m_score"]
     rfm["rfm_score"] = rfm["r_score"].astype(str) + rfm["f_score"].astype(str) + rfm["m_score"].astype(str)
-    rfm.to_sql("rfm_scores_staging", con=_engine(), schema="stg", if_exists="replace", index=False, method="multi", chunksize=5000)
+    rfm.to_sql("rfm_scores_staging", con=_engine(), schema="public", if_exists="replace", index=False, method="multi", chunksize=5000)
 
 
 def run_load() -> None:

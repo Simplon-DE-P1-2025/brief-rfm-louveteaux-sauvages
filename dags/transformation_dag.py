@@ -12,7 +12,7 @@ with DAG(
     dag_id="transformation_rfm",
     default_args=default_args,
     start_date=datetime(2026, 1, 4),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
     tags=["rfm", "transformation"],
 ):

@@ -158,14 +158,14 @@ with left_col:
         c_start, c_end = st.columns(2)
         with c_start:
             start_date = st.date_input(
-                "3.1) Date debut",
+                "Date debut",
                 value=min_date.date(),
                 min_value=min_date.date(),
                 max_value=max_date.date(),
             )
         with c_end:
             end_date = st.date_input(
-                "3.2) Date fin",
+                "Date fin",
                 value=max_date.date(),
                 min_value=min_date.date(),
                 max_value=max_date.date(),

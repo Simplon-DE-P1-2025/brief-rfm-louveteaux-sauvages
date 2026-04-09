@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
     # ── Calcul RFM ────────────────────────────────────────
     print("\n═══ CALCUL RFM ═══")
-    rfm = compute_rfm(df)
+    rfm, snapshot = compute_rfm(df)
     print(f"Clients RFM : {len(rfm)}")
     print(rfm.head())
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
     # ── Segmentation ──────────────────────────────────────
     print("\n═══ SEGMENTATION ═══")
-    rfm = add_segments(rfm)
+    rfm = add_segments(rfm, snapshot)
     print(rfm["segment"].value_counts())
     print(rfm[["customer_id","rfm_score","rfm_total","segment"]].head(10))
     # ── Catégorisation ────────────────────────────────────

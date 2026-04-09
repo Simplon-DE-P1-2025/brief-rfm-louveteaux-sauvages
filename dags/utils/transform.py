@@ -65,12 +65,18 @@ def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 def clean_orders(df: pd.DataFrame) -> pd.DataFrame:
     """Pipeline de nettoyage : cast → nulls → retours → invalides → doublons."""
     log.info("── Début nettoyage ──────────────────────")
+    initial = len(df)
     df = cast_types(df)
     df = remove_nulls(df)
     df = remove_returns(df)
     df = remove_invalid(df)
     df = remove_duplicates(df)
-    log.info(f"── Nettoyage terminé : {len(df)} lignes ─")
+    total_removed = initial - len(df)
+    log.info(
+        f"── Nettoyage terminé : {len(df)} lignes conservées "
+        f"({total_removed} supprimées sur {initial} initiales, "
+        f"{total_removed / initial * 100:.1f}%) ─"
+    )
     return df
 
 
@@ -131,10 +137,13 @@ def build_fact_lignes(df: pd.DataFrame) -> pd.DataFrame:
 # 4. CALCUL RFM
 # ─────────────────────────────────────────────────────────
 
-def compute_rfm(df: pd.DataFrame) -> pd.DataFrame:
+def compute_rfm(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Timestamp]:
     """
     Calcule Recency, Frequency, Monetary par client.
     Snapshot = max(invoice_date) + 1 jour.
+
+    Returns:
+        (rfm DataFrame, snapshot Timestamp)
     """
     log.info("Calcul RFM")
     df = df.copy()
@@ -142,12 +151,13 @@ def compute_rfm(df: pd.DataFrame) -> pd.DataFrame:
     snapshot = df["invoice_date"].max() + pd.Timedelta(days=1)
     log.debug(f"Snapshot date : {snapshot}")
     rfm = df.groupby("customer_id").agg(
-        recency   = ("invoice_date", lambda x: (snapshot - x.max()).days),
-        frequency = ("invoice",      "nunique"),
-        monetary  = ("total_price",  "sum"),
+        recency          = ("invoice_date", lambda x: (snapshot - x.max()).days),
+        frequency        = ("invoice",      "nunique"),
+        monetary         = ("total_price",  "sum"),
+        first_order_date = ("invoice_date", "min"),
     ).reset_index()
     log.info(f"RFM calculé : {len(rfm)} clients")
-    return rfm
+    return rfm, snapshot
 
 
 # ─────────────────────────────────────────────────────────
@@ -183,22 +193,29 @@ def add_rfm_scores(rfm: pd.DataFrame) -> pd.DataFrame:
 # 6. SEGMENTATION
 # ─────────────────────────────────────────────────────────
 
-def add_segments(rfm: pd.DataFrame) -> pd.DataFrame:
+def add_segments(rfm: pd.DataFrame, snapshot: pd.Timestamp, new_client_days: int = 90) -> pd.DataFrame:
     """
     Segmente chaque client :
-    555->Champion | R>=4,F>=4->Fidele | R>=4,F<=2->Nouveau
+    555->Champion | R>=4,F>=4->Fidele | R>=4,first<=90j->Nouveau
     R<=2,F>=3->A risque | R<=2,F<=2->Perdu | sinon->Moyen
+
+    Args:
+        snapshot        : date de référence (max invoice_date + 1 jour)
+        new_client_days : seuil en jours depuis la 1ère commande pour "Nouveau client"
     """
-    log.info("Segmentation des clients")
+    log.info(f"Segmentation des clients (seuil nouveau client : {new_client_days}j)")
 
     def segment(row):
         r, f = int(row["r_score"]), int(row["f_score"])
-        if row["rfm_score"] == "555":  return "Champion"
-        elif r >= 4 and f >= 4:        return "Client fidele"
-        elif r >= 4 and f <= 2:        return "Nouveau client"
-        elif r <= 2 and f >= 3:        return "Client a risque"
-        elif r <= 2 and f <= 2:        return "Client perdu"
-        else:                          return "Client moyen"
+        days_since_first = (snapshot - row["first_order_date"]).days
+
+        if row["rfm_score"] == "555":             return "Champion"
+        elif r >= 4 and f >= 4:                   return "Client fidele"
+        elif r >= 4 and days_since_first <= new_client_days:
+                                                  return "Nouveau client"
+        elif r <= 2 and f >= 3:                   return "Client a risque"
+        elif r <= 2 and f <= 2:                   return "Client perdu"
+        else:                                     return "Client moyen"
 
     rfm["segment"] = rfm.apply(segment, axis=1)
     log.info("Segments :\n" + str(rfm["segment"].value_counts()))
@@ -274,9 +291,9 @@ def run_transformation() -> dict:
     try:
         df  = load_raw_data(conn)
         df  = clean_orders(df)
-        rfm = compute_rfm(df)
+        rfm, snapshot = compute_rfm(df)
         rfm = add_rfm_scores(rfm)
-        rfm = add_segments(rfm)
+        rfm = add_segments(rfm, snapshot)
         rfm = add_categorisation(rfm)
         tables = {
             "dim_client"  : build_dim_client(df),

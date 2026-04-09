@@ -55,7 +55,7 @@ def _resolve_excel_path() -> str:
 
 
 def _excel_sheet_param():
-    """None = tous les onglets ; sinon un nom ou une liste de noms."""
+    """None = tous les onglets ; sinon un nom ou une liste de noms et ."""
     if not EXCEL_SHEETS:
         return None
     parts = [s.strip() for s in EXCEL_SHEETS.split(",") if s.strip()]

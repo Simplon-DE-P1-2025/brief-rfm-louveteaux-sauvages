@@ -95,6 +95,49 @@ Accès locaux :
 - Airflow : `http://localhost:${NGINX_PUBLIC_PORT}/`
 - Streamlit : `http://localhost:${NGINX_PUBLIC_PORT}/doc/`
 
+## Environnement de développement (sans Nginx)
+
+Le fichier `docker-compose.dev.yaml` mime le comportement de la stack principale, mais pour un usage local direct :
+- pas de reverse proxy Nginx
+- ports exposés service par service
+- fichier d'environnement dédié : `.env.dev`
+
+Fichiers à utiliser :
+- `docker-compose.dev.yaml`
+- `.env.dev.example` (modèle à copier)
+
+### Fonctionnement de `.env.dev`
+
+1. Copier `.env.dev.example` vers `.env.dev`
+2. Adapter les variables si besoin (mots de passe, ports, clés)
+3. Lancer le compose dev avec ce fichier d'env
+
+Commandes :
+
+```bash
+cp .env.dev.example .env.dev
+docker compose -f docker-compose.dev.yaml --env-file .env.dev up -d
+```
+
+Arrêt :
+
+```bash
+docker compose -f docker-compose.dev.yaml --env-file .env.dev down
+```
+
+Accès locaux (dev) :
+- Airflow API/UI : `http://localhost:${AIRFLOW_API_PUBLIC_PORT}`
+- Streamlit : `http://localhost:${STREAMLIT_PUBLIC_PORT}`
+- PostgreSQL Airflow : `localhost:${AIRFLOW_DB_PUBLIC_PORT}`
+- PostgreSQL applicatif : `localhost:${APP_DB_PUBLIC_PORT}`
+
+Variables principales du `.env.dev` :
+- `ENV_FILE_PATH` : chemin du fichier d'env injecté dans les services Airflow
+- `AIRFLOW_DB_*` : connexion base de métadonnées Airflow
+- `APP_DB_*` : connexion base applicative RFM
+- `AIRFLOW_API_PUBLIC_PORT`, `STREAMLIT_PUBLIC_PORT` : ports exposés localement
+- `FERNET_KEY`, `AIRFLOW__API_AUTH__JWT_SECRET` : secrets techniques Airflow (valeurs dev uniquement)
+
 ## Notes production
 
 - Ne pas exposer `airflow-apiserver` directement

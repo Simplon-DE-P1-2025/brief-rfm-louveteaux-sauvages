@@ -251,21 +251,30 @@ def add_categorisation(rfm: pd.DataFrame) -> pd.DataFrame:
 
 def build_fact_orders(df: pd.DataFrame, rfm: pd.DataFrame) -> pd.DataFrame:
     """
-    Joint les lignes nettoyees avec les scores RFM par client.
-    Colonnes : toutes les colonnes df + total_line + scores RFM.
+    Construit la table de faits en schéma en étoile :
+      - Clés étrangères : invoice (→ dim_facture), stock_code (→ dim_produit), customer_id (→ dim_client)
+      - Mesures         : quantity, price, total_line
+      - Scores RFM      : r_score, f_score, m_score, rfm_score, rfm_total, segment, categorisation
+
+    Les attributs descriptifs (description, country, invoice_date) restent
+    dans leurs dimensions respectives et ne sont PAS dupliqués ici.
     """
-    log.info("Construction fact_orders")
+    log.info("Construction fact_orders (schéma en étoile)")
     rfm_cols = [
         "customer_id",
         "r_score", "f_score", "m_score",
         "rfm_score", "rfm_total",
         "segment", "categorisation",
     ]
-    fact = df.copy()
+    # Clés étrangères + mesures uniquement
+    fact = df[["invoice", "stock_code", "customer_id", "quantity", "price"]].copy()
     fact["total_line"] = fact["quantity"] * fact["price"]
     fact = fact.merge(rfm[rfm_cols], on="customer_id", how="left")
     fact = fact.reset_index(drop=True)
-    log.info(f"fact_orders : {len(fact)} lignes, {len(fact.columns)} colonnes")
+    log.info(
+        f"fact_orders : {len(fact)} lignes, {len(fact.columns)} colonnes "
+        f"(FK: invoice, stock_code, customer_id | mesures: quantity, price, total_line)"
+    )
     return fact
 
 
